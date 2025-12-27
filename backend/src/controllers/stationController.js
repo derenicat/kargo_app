@@ -33,3 +33,15 @@ exports.createStation = async (req, res) => {
     res.status(500).json({ error: 'İstasyon eklenirken hata oluştu.' });
   }
 };
+
+// İstasyon Sil
+exports.deleteStation = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query('DELETE FROM stations WHERE id = $1', [id]);
+    res.json({ message: 'İstasyon silindi.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'İstasyon silinirken hata oluştu.' });
+  }
+};

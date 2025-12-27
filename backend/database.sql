@@ -48,5 +48,6 @@ INSERT INTO stations (name, latitude, longitude) VALUES
 ('Karamürsel', 40.6922, 29.6156),
 ('Kartepe', 40.7533, 30.0244),
 ('Körfez', 40.7769, 29.7369),
-('İzmit', 40.7654, 29.9408)
+('İzmit', 40.7654, 29.9408),
+('Kocaeli Üniversitesi Umuttepe Kampüsü', 40.8222, 29.9218)
 ON CONFLICT (name) DO NOTHING;

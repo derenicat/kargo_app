@@ -2,20 +2,27 @@ const { calculateDistance } = require('../utils/haversine');
 
 class GeneticAlgorithmService {
     constructor(stations, demands, vehicles, options = {}) {
-        this.stations = stations; // { id, name, lat, lng }
-        this.demands = demands;   // { station_id, weight }
-        this.vehicles = vehicles; // [{ id, capacity, isRental }]
-        this.depot = stations.find(s => s.name === 'İzmit' || s.name === 'İzmit Merkez') || stations[0]; // Merkez: İzmit
+        this.stations = stations;
+        this.demands = demands;
+        this.vehicles = vehicles;
         
-        // Genetik Parametreler
+        // Bitiş Noktası: Kocaeli Üniversitesi Umuttepe Kampüsü
+        // Veritabanından gelen stations listesinde ismi 'Umuttepe' veya 'Kampüs' içeren kaydı bul.
+        // Eğer bulamazsa, listenin son elemanını varsay.
+        this.endPoint = stations.find(s => 
+            s.name.toLowerCase().includes('umuttepe') || 
+            s.name.toLowerCase().includes('kampüs') ||
+            s.name.toLowerCase().includes('universitesi')
+        ) || stations[stations.length - 1];
+        
+        // Çıkış Noktası: İzmit Merkez (Varsayılan depo) veya serbest bırakılabilir
+        this.depot = stations.find(s => s.name === 'İzmit' || s.name === 'İzmit Merkez') || stations[0];
+        
         this.populationSize = options.populationSize || 50;
         this.generations = options.generations || 100;
         this.mutationRate = options.mutationRate || 0.1;
     }
 
-    /**
-     * Ana çözüm fonksiyonu
-     */
     solve() {
         let population = this.initializePopulation();
 
@@ -26,9 +33,6 @@ class GeneticAlgorithmService {
         return this.getBestIndividual(population);
     }
 
-    /**
-     * Başlangıç popülasyonunu oluştur (Rastgele geçerli rotalar)
-     */
     initializePopulation() {
         const population = [];
         const stationIds = this.demands.map(d => d.station_id);
@@ -41,7 +45,8 @@ class GeneticAlgorithmService {
     }
 
     /**
-     * Kromozomu (İstasyon sıralaması) araç rotalarına böler (Greedy Split)
+     * Kromozomu rotalara dönüştürür.
+     * Kural: Her araç rotasını tamamladığında Umuttepe'ye gider.
      */
     decode(chromosome) {
         let routes = [];
@@ -49,27 +54,46 @@ class GeneticAlgorithmService {
         let currentRoute = [];
         let currentLoad = 0;
 
-        // Basit bir yaklaşımla: İstasyonları sırayla araçlara doldur
         chromosome.forEach(stationId => {
             const demand = this.demands.find(d => d.station_id === stationId);
+            // Eğer araç dizisi bittiyse yeni kiralık araç ekle
+            if (currentVehicleIndex >= this.vehicles.length) {
+                 this.vehicles.push({ 
+                     id: this.vehicles.length + 1,
+                     name: `Kiralık Araç ${this.vehicles.length + 1}`,
+                     capacity: 500, 
+                     isRental: true 
+                 });
+            }
+            
             const vehicle = this.vehicles[currentVehicleIndex];
 
             if (currentLoad + demand.total_weight <= vehicle.capacity) {
                 currentRoute.push(stationId);
                 currentLoad += demand.total_weight;
             } else {
-                // Mevcut rotayı bitir, yeni araca geç
+                // Mevcut rotayı bitir -> SON DURAK UMUTTEPE
+                // Başlangıç noktası: Önceki rotanın bittiği yer mi yoksa depo mu?
+                // Basitlik için: Depodan çıkıp, işi bitince Umuttepe'ye dönüyor.
+                
+                // NOT: Gerçekçi olması için rotanın başına Depo(İzmit) eklenebilir.
+                // path: [Depo, ...Duraklar, Umuttepe]
+                const finalPath = [this.depot.id, ...currentRoute, this.endPoint.id];
+                
                 routes.push({
                     vehicle: vehicle,
-                    path: [this.depot.id, ...currentRoute, this.depot.id],
+                    path: finalPath,
                     load: currentLoad
                 });
 
                 currentVehicleIndex++;
                 if (currentVehicleIndex >= this.vehicles.length) {
-                    // Eğer araç bittiyse (ve kiralama varsa buraya mantık eklenebilir)
-                    // Şimdilik ekstra bir kiralık araç simüle et
-                    this.vehicles.push({ capacity: 500, isRental: true, name: 'Kiralık Araç' });
+                     this.vehicles.push({ 
+                         id: this.vehicles.length + 1,
+                         name: `Kiralık Araç ${this.vehicles.length + 1}`, 
+                         capacity: 500, 
+                         isRental: true 
+                     });
                 }
                 
                 currentRoute = [stationId];
@@ -79,9 +103,12 @@ class GeneticAlgorithmService {
 
         // Son rotayı ekle
         if (currentRoute.length > 0) {
+            const vehicle = this.vehicles[currentVehicleIndex];
+            const finalPath = [this.depot.id, ...currentRoute, this.endPoint.id];
+            
             routes.push({
-                vehicle: this.vehicles[currentVehicleIndex],
-                path: [this.depot.id, ...currentRoute, this.depot.id],
+                vehicle: vehicle,
+                path: finalPath,
                 load: currentLoad
             });
         }
@@ -102,7 +129,10 @@ class GeneticAlgorithmService {
             for (let i = 0; i < route.path.length - 1; i++) {
                 const s1 = this.stations.find(s => s.id === route.path[i]);
                 const s2 = this.stations.find(s => s.id === route.path[i+1]);
-                totalDistance += calculateDistance(s1.latitude, s1.longitude, s2.latitude, s2.longitude);
+                // Eğer istasyon bulunamazsa (örn: Umuttepe henüz DB'de yoksa) hata vermemesi için kontrol
+                if (s1 && s2) {
+                    totalDistance += calculateDistance(s1.latitude, s1.longitude, s2.latitude, s2.longitude);
+                }
             }
         });
 
@@ -110,18 +140,15 @@ class GeneticAlgorithmService {
     }
 
     evolve(population) {
-        // Seçilim, Çaprazlama ve Mutasyon işlemleri burada yapılacak
-        // Şimdilik basitleştirilmiş bir elitizm ve rastgele mutasyon
         const newPopulation = [];
         const sorted = population.sort((a, b) => a.fitness - b.fitness);
         
-        // Elitizm: En iyi %10'u koru
+        // Elitizm
         const elites = sorted.slice(0, Math.floor(this.populationSize * 0.1));
         newPopulation.push(...elites);
 
         while (newPopulation.length < this.populationSize) {
-            // Basit mutasyon: Rastgele bir bireyi al ve iki istasyonun yerini değiştir
-            let parent = sorted[Math.floor(Math.random() * (this.populationSize / 2))]; // Üst yarıdan seç
+            let parent = sorted[Math.floor(Math.random() * (this.populationSize / 2))];
             let newChrom = this.mutate(this.extractChromosome(parent));
             newPopulation.push(this.decode(newChrom));
         }
@@ -130,7 +157,8 @@ class GeneticAlgorithmService {
     }
 
     extractChromosome(individual) {
-        return individual.routes.flatMap(r => r.path.filter(id => id !== this.depot.id));
+        // Rotadan Depo(baş) ve Umuttepe(son) duraklarını çıkarıp saf kromozomu al
+        return individual.routes.flatMap(r => r.path.filter(id => id !== this.depot.id && id !== this.endPoint.id));
     }
 
     mutate(chromosome) {

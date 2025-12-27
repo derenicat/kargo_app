@@ -8,6 +8,7 @@ const api = axios.create({
 
 export const getStations = () => api.get('/stations');
 export const createStation = (data) => api.post('/stations', data);
+export const deleteStation = (id) => api.delete(`/stations/${id}`);
 
 export const getScenarios = () => api.get('/scenarios');
 export const getScenarioById = (id) => api.get(`/scenarios/${id}`);

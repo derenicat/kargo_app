@@ -46,14 +46,24 @@ exports.runOptimization = async (req, res) => {
 
             const savedRoutes = [];
             for (const route of bestSolution.routes) {
-                const fullPath = route.path.map(stopId => {
+                const detailedPath = route.path.map(stopId => {
                     const st = stations.find(s => s.id === stopId);
-                    return [st.latitude, st.longitude]; // Harita için [lat, lng] formatı
+                    const demand = demands.find(d => d.station_id === stopId);
+                    
+                    return {
+                        id: st.id,
+                        name: st.name,
+                        lat: st.latitude,
+                        lng: st.longitude,
+                        cargo_count: demand ? demand.cargo_count : 0,
+                        total_weight: demand ? demand.total_weight : 0
+                    };
                 });
 
                 const routeEntry = {
                     vehicle: route.vehicle,
-                    path: fullPath,
+                    path: detailedPath.map(p => [p.lat, p.lng]), // Harita için sadece koordinat dizisi (Polyline için)
+                    stops: detailedPath, // Tüm detaylar
                     load: route.load,
                     capacity: route.vehicle.capacity
                 };
