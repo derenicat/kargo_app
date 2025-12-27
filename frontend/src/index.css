@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0f172a; /* Slate 900 */
+  --color-secondary: #2563eb; /* Blue 600 */
+  --color-accent: #f59e0b; /* Amber 500 */
+  --color-surface: #ffffff;
+  --color-background: #f8fafc; /* Slate 50 */
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background-color: var(--color-background);
+  color: #1e293b; /* Slate 800 */
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Input Reset */
+input, select, textarea {
+  color: #1e293b;
+  background-color: #ffffff;
+}
