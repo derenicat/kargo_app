@@ -1,116 +1,145 @@
 const { calculateDistance } = require('../utils/haversine');
 
 class GeneticAlgorithmService {
-    constructor(stations, demands, vehicles, options = {}) {
+    constructor(stations, cargoItems, vehicles, options = {}) {
         this.stations = stations;
-        this.demands = demands;
-        this.vehicles = vehicles;
+        this.cargoItems = cargoItems;
+        this.vehicles = JSON.parse(JSON.stringify(vehicles)); // Orijinal araç listesini koru
         
-        // Bitiş Noktası: Kocaeli Üniversitesi Umuttepe Kampüsü
-        // Veritabanından gelen stations listesinde ismi 'Umuttepe' veya 'Kampüs' içeren kaydı bul.
-        // Eğer bulamazsa, listenin son elemanını varsay.
-        this.endPoint = stations.find(s => 
-            s.name.toLowerCase().includes('umuttepe') || 
-            s.name.toLowerCase().includes('kampüs') ||
-            s.name.toLowerCase().includes('universitesi')
-        ) || stations[stations.length - 1];
+        this.mode = options.mode || 'unlimited';
         
-        // Çıkış Noktası: İzmit Merkez (Varsayılan depo) veya serbest bırakılabilir
+        this.endPoint = stations.find(s => s.name === 'Kocaeli Üniversitesi Umuttepe Kampüsü') || stations[stations.length - 1];
         this.depot = stations.find(s => s.name === 'İzmit' || s.name === 'İzmit Merkez') || stations[0];
+
+        // Umuttepe'den kargo alınmaz
+        this.activeItems = cargoItems.filter(item => item.station_id !== this.endPoint.id);
         
         this.populationSize = options.populationSize || 50;
         this.generations = options.generations || 100;
         this.mutationRate = options.mutationRate || 0.1;
+        this.rejectedItems = [];
     }
 
     solve() {
+        let itemsToProcess = [...this.activeItems];
+        
+        // Sabit araç modunda kapasite üstü kargoları en başta eliyoruz (Greedy Pre-filter)
+        if (this.mode !== 'unlimited') {
+            const totalCapacity = this.vehicles.reduce((sum, v) => sum + v.capacity, 0);
+            
+            if (this.mode === 'max_weight') {
+                itemsToProcess.sort((a, b) => b.weight - a.weight);
+            } else if (this.mode === 'max_count') {
+                itemsToProcess.sort((a, b) => a.weight - b.weight);
+            }
+            
+            let currentSum = 0;
+            const selected = [];
+            const rejected = [];
+            
+            for (const item of itemsToProcess) {
+                if (currentSum + item.weight <= totalCapacity) {
+                    selected.push(item);
+                    currentSum += item.weight;
+                } else {
+                    rejected.push(item);
+                }
+            }
+            itemsToProcess = selected;
+            this.rejectedItems = rejected;
+        }
+
+        this.finalActiveItems = itemsToProcess;
+
         let population = this.initializePopulation();
 
         for (let g = 0; g < this.generations; g++) {
             population = this.evolve(population);
         }
 
-        return this.getBestIndividual(population);
+        const best = this.getBestIndividual(population);
+        return {
+            ...best,
+            rejectedItems: this.rejectedItems
+        };
     }
 
     initializePopulation() {
         const population = [];
-        const stationIds = this.demands.map(d => d.station_id);
-
         for (let i = 0; i < this.populationSize; i++) {
-            let chromosome = this.shuffle([...stationIds]);
+            let chromosome = this.shuffle([...this.finalActiveItems]);
             population.push(this.decode(chromosome));
         }
         return population;
     }
 
     /**
-     * Kromozomu rotalara dönüştürür.
-     * Kural: Her araç rotasını tamamladığında Umuttepe'ye gider.
+     * Kromozomu Rotalara Dönüştür
      */
     decode(chromosome) {
         let routes = [];
         let currentVehicleIndex = 0;
-        let currentRoute = [];
-        let currentLoad = 0;
+        
+        // Her birey için araç listesinin kopyasını al
+        let availableVehicles = JSON.parse(JSON.stringify(this.vehicles));
+        
+        let currentRouteStops = [];
+        let currentVehicleLoad = 0;
 
-        chromosome.forEach(stationId => {
-            const demand = this.demands.find(d => d.station_id === stationId);
-            // Eğer araç dizisi bittiyse yeni kiralık araç ekle
-            if (currentVehicleIndex >= this.vehicles.length) {
-                 this.vehicles.push({ 
-                     id: this.vehicles.length + 1,
-                     name: `Kiralık Araç ${this.vehicles.length + 1}`,
-                     capacity: 500, 
-                     isRental: true 
-                 });
-            }
-            
-            const vehicle = this.vehicles[currentVehicleIndex];
+        for (let i = 0; i < chromosome.length; i++) {
+            const item = chromosome[i];
+            let currentVehicle = availableVehicles[currentVehicleIndex];
 
-            if (currentLoad + demand.total_weight <= vehicle.capacity) {
-                currentRoute.push(stationId);
-                currentLoad += demand.total_weight;
+            // Mevcut araca sığıyor mu?
+            if (currentVehicleLoad + item.weight <= currentVehicle.capacity) {
+                const station = this.stations.find(s => s.id === item.station_id);
+                const lastStop = currentRouteStops[currentRouteStops.length - 1];
+                
+                if (lastStop && lastStop.station.id === station.id) {
+                    lastStop.items.push(item);
+                    lastStop.load += item.weight;
+                } else {
+                    currentRouteStops.push({
+                        station: station,
+                        items: [item],
+                        load: item.weight
+                    });
+                }
+                currentVehicleLoad += item.weight;
             } else {
-                // Mevcut rotayı bitir -> SON DURAK UMUTTEPE
-                // Başlangıç noktası: Önceki rotanın bittiği yer mi yoksa depo mu?
-                // Basitlik için: Depodan çıkıp, işi bitince Umuttepe'ye dönüyor.
-                
-                // NOT: Gerçekçi olması için rotanın başına Depo(İzmit) eklenebilir.
-                // path: [Depo, ...Duraklar, Umuttepe]
-                const finalPath = [this.depot.id, ...currentRoute, this.endPoint.id];
-                
-                routes.push({
-                    vehicle: vehicle,
-                    path: finalPath,
-                    load: currentLoad
-                });
+                // Sığmıyor, mevcut rotayı bitir ve yeni araca geç
+                if (currentRouteStops.length > 0) {
+                    this.finalizeRoute(routes, currentVehicle, currentRouteStops, currentVehicleLoad);
+                }
 
                 currentVehicleIndex++;
-                if (currentVehicleIndex >= this.vehicles.length) {
-                     this.vehicles.push({ 
-                         id: this.vehicles.length + 1,
-                         name: `Kiralık Araç ${this.vehicles.length + 1}`, 
-                         capacity: 500, 
-                         isRental: true 
-                     });
+                currentRouteStops = [];
+                currentVehicleLoad = 0;
+
+                // Yeni araç var mı kontrol et
+                if (currentVehicleIndex >= availableVehicles.length) {
+                    if (this.mode === 'unlimited') {
+                        const newRental = {
+                            id: `rental-${availableVehicles.length}`,
+                            name: `Kiralık Araç ${availableVehicles.length - 2}`,
+                            capacity: 500,
+                            isRental: true
+                        };
+                        availableVehicles.push(newRental);
+                    } else {
+                        // SABİT MOD: Araç bitti, kalan kargolar bu çözümde taşınamaz
+                        break; 
+                    }
                 }
                 
-                currentRoute = [stationId];
-                currentLoad = demand.total_weight;
+                // Döngüyü bu paket için tekrar çalıştır (yeni araçla)
+                i--; 
             }
-        });
+        }
 
-        // Son rotayı ekle
-        if (currentRoute.length > 0) {
-            const vehicle = this.vehicles[currentVehicleIndex];
-            const finalPath = [this.depot.id, ...currentRoute, this.endPoint.id];
-            
-            routes.push({
-                vehicle: vehicle,
-                path: finalPath,
-                load: currentLoad
-            });
+        // Son kalan rotayı ekle
+        if (currentRouteStops.length > 0 && currentVehicleIndex < availableVehicles.length) {
+            this.finalizeRoute(routes, availableVehicles[currentVehicleIndex], currentRouteStops, currentVehicleLoad);
         }
 
         return {
@@ -119,46 +148,60 @@ class GeneticAlgorithmService {
         };
     }
 
-    calculateFitness(individual) {
+    finalizeRoute(routes, vehicle, stops, load) {
+        const pathCoords = [
+            [this.depot.latitude, this.depot.longitude],
+            ...stops.map(s => [s.station.latitude, s.station.longitude]),
+            [this.endPoint.latitude, this.endPoint.longitude]
+        ];
+
+        routes.push({
+            vehicle: JSON.parse(JSON.stringify(vehicle)), // Kopya alarak kopyalanma hatasını önle
+            stops: stops,
+            path: pathCoords,
+            load: load
+        });
+    }
+
+    calculateFitness(routes) {
         let totalDistance = 0;
         let rentalCost = 0;
+        let unreachablePenalty = 0;
 
-        individual.forEach(route => {
+        // Taşınamayan kargo varsa ceza puanı ekle (Algoritmayı doğru çözüme zorlar)
+        const itemsInRoutes = routes.reduce((sum, r) => sum + r.stops.reduce((s, st) => s + st.items.length, 0), 0);
+        if (itemsInRoutes < this.finalActiveItems.length) {
+            unreachablePenalty = (this.finalActiveItems.length - itemsInRoutes) * 5000;
+        }
+
+        routes.forEach(route => {
             if (route.vehicle.isRental) rentalCost += 200;
-
             for (let i = 0; i < route.path.length - 1; i++) {
-                const s1 = this.stations.find(s => s.id === route.path[i]);
-                const s2 = this.stations.find(s => s.id === route.path[i+1]);
-                // Eğer istasyon bulunamazsa (örn: Umuttepe henüz DB'de yoksa) hata vermemesi için kontrol
-                if (s1 && s2) {
-                    totalDistance += calculateDistance(s1.latitude, s1.longitude, s2.latitude, s2.longitude);
-                }
+                const [lat1, lon1] = route.path[i];
+                const [lat2, lon2] = route.path[i+1];
+                totalDistance += calculateDistance(lat1, lon1, lat2, lon2);
             }
         });
 
-        return totalDistance + rentalCost;
+        return totalDistance + rentalCost + unreachablePenalty;
     }
 
     evolve(population) {
         const newPopulation = [];
         const sorted = population.sort((a, b) => a.fitness - b.fitness);
-        
-        // Elitizm
-        const elites = sorted.slice(0, Math.floor(this.populationSize * 0.1));
+        const elites = sorted.slice(0, Math.floor(this.populationSize * 0.2));
         newPopulation.push(...elites);
 
         while (newPopulation.length < this.populationSize) {
-            let parent = sorted[Math.floor(Math.random() * (this.populationSize / 2))];
+            let parent = elites[Math.floor(Math.random() * elites.length)];
             let newChrom = this.mutate(this.extractChromosome(parent));
             newPopulation.push(this.decode(newChrom));
         }
-
         return newPopulation;
     }
 
     extractChromosome(individual) {
-        // Rotadan Depo(baş) ve Umuttepe(son) duraklarını çıkarıp saf kromozomu al
-        return individual.routes.flatMap(r => r.path.filter(id => id !== this.depot.id && id !== this.endPoint.id));
+        return individual.routes.flatMap(r => r.stops.flatMap(s => s.items));
     }
 
     mutate(chromosome) {

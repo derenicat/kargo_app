@@ -1,159 +1,180 @@
 import { useState, useEffect } from 'react';
-import { getStations, createScenario, getScenarios } from '../services/api';
+import { getCargoByDate, seedRandomCargo } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const ScenariosPage = () => {
-  const [stations, setStations] = useState([]);
-  const [scenarios, setScenarios] = useState([]);
-  const [scenarioName, setScenarioName] = useState('');
-  const [demands, setDemands] = useState({}); 
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [cargoItems, setCargoItems] = useState([]);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    fetchDailyCargo();
+  }, [selectedDate]);
 
-  const fetchInitialData = async () => {
+  const fetchDailyCargo = async () => {
+    setLoading(true);
     try {
-      const [stRes, scRes] = await Promise.all([getStations(), getScenarios()]);
-      setStations(stRes.data);
-      setScenarios(scRes.data);
-      
-      const initialDemands = {};
-      stRes.data.forEach(s => {
-        initialDemands[s.id] = { cargo_count: 0, total_weight: 0 };
-      });
-      setDemands(initialDemands);
+      const response = await getCargoByDate(selectedDate);
+      setCargoItems(response.data);
     } catch (error) {
-      console.error('Veri yükleme hatası:', error);
+      console.error('Kargo yükleme hatası:', error);
+      setCargoItems([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDemandChange = (stationId, field, value) => {
-    setDemands(prev => ({
-      ...prev,
-      [stationId]: { ...prev[stationId], [field]: parseFloat(value) || 0 }
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const formattedDemands = Object.entries(demands)
-      .filter(([_, data]) => data.cargo_count > 0 || data.total_weight > 0)
-      .map(([id, data]) => ({
-        station_id: parseInt(id),
-        ...data
-      }));
-
-    if (formattedDemands.length === 0) {
-        alert('Lütfen en az bir istasyon için talep girin.');
-        return;
-    }
-
+  const handleSeedRandom = async () => {
+    setLoading(true);
     try {
-      const response = await createScenario({ name: scenarioName, demands: formattedDemands });
-      alert('Senaryo oluşturuldu!');
-      navigate(`/optimize?id=${response.data.scenario.id}`);
+      await seedRandomCargo(selectedDate);
+      fetchDailyCargo();
+      alert('Rastgele test kargoları oluşturuldu!');
     } catch (error) {
-      console.error('Senaryo hatası:', error);
-      alert('Senaryo oluşturulamadı.');
+      console.error('Seed hatası:', error);
+      alert('Hata oluştu.');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const stationSummary = cargoItems.reduce((acc, item) => {
+    if (!acc[item.station_name]) {
+      acc[item.station_name] = { count: 0, weight: 0 };
+    }
+    acc[item.station_name].count += 1;
+    acc[item.station_name].weight += item.weight;
+    return acc;
+  }, {});
+
+  const totalDailyWeight = cargoItems.reduce((sum, item) => sum + item.weight, 0);
 
   return (
-    <div className="space-y-10">
-      {/* Üst Kısım: Form */}
-      <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
-        <div className="p-8 border-b border-slate-100 bg-slate-50">
-          <h1 className="text-2xl font-bold text-slate-900">Yeni Taşıma Senaryosu</h1>
-          <p className="text-slate-500 mt-1">Günlük kargo taleplerini girerek optimizasyon işlemini başlatın.</p>
+    <div className="space-y-8">
+      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Günlük Talep Takibi</h1>
+            <p className="text-slate-500 mt-1">Seçili tarihteki kargo hareketlerini inceleyin veya test verisi üretin.</p>
+          </div>
+          <div className="flex flex-col md:flex-row items-center gap-3">
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center space-x-3">
+                <input 
+                    type="date" 
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="bg-transparent border-none text-slate-900 font-bold focus:ring-0 outline-none cursor-pointer"
+                />
+            </div>
+            <div className="flex gap-2">
+                <button 
+                    onClick={handleSeedRandom}
+                    disabled={loading}
+                    className="bg-amber-100 text-amber-700 hover:bg-amber-200 px-4 py-2.5 rounded-lg font-bold transition flex items-center shadow-sm"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                    Sentetik Veri Oluştur
+                </button>
+                <button 
+                    onClick={() => navigate(`/optimize?date=${selectedDate}`)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-bold shadow-md transition transform active:scale-95"
+                >
+                    Bu Günü Planla
+                </button>
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8">
-          <div className="max-w-xl mb-8">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Senaryo Adı</label>
-            <input 
-              type="text" 
-              placeholder="Örn: 28 Aralık Pazartesi Talepleri"
-              value={scenarioName}
-              onChange={(e) => setScenarioName(e.target.value)}
-              className="w-full px-4 py-3 bg-white border border-slate-300 rounded-lg text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none transition shadow-sm"
-              required 
-            />
-          </div>
-
-          <div className="border border-slate-200 rounded-lg overflow-hidden shadow-sm mb-8">
-            <table className="w-full text-left">
-              <thead className="bg-slate-100 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">İlçe / İstasyon</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Kargo Sayısı (Adet)</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Toplam Ağırlık (kg)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {stations.map((station, idx) => (
-                  <tr key={station.id} className={`hover:bg-blue-50/50 transition ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
-                    <td className="px-6 py-4 font-medium text-slate-800">{station.name}</td>
-                    <td className="px-6 py-3">
-                      <input 
-                        type="number" 
-                        min="0"
-                        className="w-32 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                        placeholder="0"
-                        onChange={(e) => handleDemandChange(station.id, 'cargo_count', e.target.value)}
-                      />
-                    </td>
-                    <td className="px-6 py-3">
-                      <input 
-                        type="number" 
-                        min="0"
-                        className="w-32 px-3 py-2 bg-white border border-slate-300 rounded-md text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                        placeholder="0"
-                        onChange={(e) => handleDemandChange(station.id, 'total_weight', e.target.value)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <button type="submit" className="bg-amber-500 hover:bg-amber-600 text-slate-900 px-8 py-3.5 rounded-xl font-bold text-base shadow-md transition-all transform hover:-translate-y-1 flex items-center">
-              <span>Senaryoyu Kaydet ve Rota Planla</span>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 ml-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
-        </form>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+            <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl">
+                <span className="text-blue-600 text-xs font-black uppercase tracking-widest">Toplam Yük</span>
+                <div className="text-3xl font-black text-blue-900 mt-1">{totalDailyWeight.toFixed(1)} <span className="text-lg font-normal">kg</span></div>
+            </div>
+            <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl">
+                <span className="text-slate-500 text-xs font-black uppercase tracking-widest">Toplam Paket</span>
+                <div className="text-3xl font-black text-slate-900 mt-1">{cargoItems.length} <span className="text-lg font-normal">Adet</span></div>
+            </div>
+            <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl">
+                <span className="text-slate-500 text-xs font-black uppercase tracking-widest">Aktif İstasyon</span>
+                <div className="text-3xl font-black text-slate-900 mt-1">{Object.keys(stationSummary).length} <span className="text-lg font-normal">Bölge</span></div>
+            </div>
+        </div>
       </div>
 
-      {/* Alt Kısım: Geçmiş */}
-      <div>
-        <h2 className="text-xl font-bold text-slate-800 mb-6 pl-1 border-l-4 border-blue-500">Geçmiş Senaryolar</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {scenarios.map(sc => (
-            <div 
-                key={sc.id} 
-                onClick={() => navigate(`/optimize?id=${sc.id}`)} 
-                className="group bg-white p-6 rounded-xl border border-slate-200 hover:border-blue-500 hover:shadow-md cursor-pointer transition-all relative overflow-hidden"
-            >
-              <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                 </svg>
-              </div>
-              <h3 className="font-bold text-lg text-slate-800 mb-2 group-hover:text-blue-600 transition">{sc.name}</h3>
-              <div className="flex items-center text-sm text-slate-500">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                {new Date(sc.created_at).toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </div>
+                İstasyon Özetleri
+            </h2>
+            <div className="space-y-3">
+                {Object.keys(stationSummary).length === 0 ? (
+                    <p className="text-slate-400 text-sm text-center py-10 italic">Veri bulunamadı.</p>
+                ) : (
+                    Object.entries(stationSummary).map(([name, data]) => (
+                        <div key={name} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center group hover:bg-blue-50 transition">
+                            <div>
+                                <div className="font-bold text-slate-800">{name}</div>
+                                <div className="text-xs text-slate-500">{data.count} Paket</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-sm font-black text-slate-900">{data.weight.toFixed(1)} kg</div>
+                                <div className="w-16 h-1 bg-slate-200 rounded-full mt-1 overflow-hidden">
+                                    <div className="h-full bg-blue-500" style={{ width: `${(data.weight / (totalDailyWeight || 1)) * 100}%` }}></div>
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
             </div>
-          ))}
+        </div>
+
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
+            <h2 className="text-lg font-bold text-slate-800 mb-6 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-slate-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
+                </svg>
+                Tüm Paket Hareketleri
+            </h2>
+            <div className="overflow-hidden border border-slate-100 rounded-xl flex-grow">
+                <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                        <tr>
+                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">ID</th>
+                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">İstasyon</th>
+                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Ağırlık</th>
+                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                        {loading ? (
+                            <tr><td colSpan="4" className="text-center py-10">İşlem yapılıyor...</td></tr>
+                        ) : cargoItems.length === 0 ? (
+                            <tr><td colSpan="4" className="text-center py-10 text-slate-400 text-sm">Bu tarihte kayıtlı kargo bulunmamaktadır.</td></tr>
+                        ) : (
+                            cargoItems.map(item => (
+                                <tr key={item.id} className="hover:bg-slate-50/50 transition">
+                                    <td className="px-6 py-4 text-xs font-mono text-slate-400">#{item.id}</td>
+                                    <td className="px-6 py-4 font-bold text-slate-800 text-sm">{item.station_name}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-600">{item.weight.toFixed(1)} kg</td>
+                                    <td className="px-6 py-4 text-sm">
+                                        {item.status === 'PLANNED' ? (
+                                            <span className="text-green-600 font-bold text-[10px] bg-green-50 px-2 py-0.5 rounded-full border border-green-100">PLANLANDI</span>
+                                        ) : (
+                                            <span className="text-amber-600 font-bold text-[10px] bg-amber-100 text-amber-700/10 px-2 py-0.5 rounded-full border border-amber-100">BEKLEMEDE</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
         </div>
       </div>
     </div>

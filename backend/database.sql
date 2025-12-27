@@ -8,14 +8,14 @@ CREATE TABLE IF NOT EXISTS stations (
     longitude FLOAT NOT NULL
 );
 
--- 2. Senaryolar Tablosu
+-- 2. Senaryolar Tablosu (Legacy / Toplu İşlem)
 CREATE TABLE IF NOT EXISTS scenarios (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Talepler Tablosu (Hangi istasyonda ne kadar yük var?)
+-- 3. Talepler Tablosu (Legacy / Toplu İşlem)
 CREATE TABLE IF NOT EXISTS demands (
     id SERIAL PRIMARY KEY,
     scenario_id INTEGER REFERENCES scenarios(id) ON DELETE CASCADE,
@@ -24,18 +24,28 @@ CREATE TABLE IF NOT EXISTS demands (
     total_weight FLOAT NOT NULL DEFAULT 0.0
 );
 
--- 4. Rotalar Tablosu (Algoritma Sonuçları)
+-- 4. Bireysel Kargo İstekleri (YENİ - Granüler Takip)
+CREATE TABLE IF NOT EXISTS cargo_requests (
+    id SERIAL PRIMARY KEY,
+    station_id INTEGER REFERENCES stations(id) ON DELETE CASCADE,
+    weight FLOAT NOT NULL, -- Paketin ağırlığı
+    request_date DATE NOT NULL, -- Hangi tarih için?
+    status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, PLANNED, REJECTED
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 5. Rotalar Tablosu (Algoritma Sonuçları)
 CREATE TABLE IF NOT EXISTS routes (
     id SERIAL PRIMARY KEY,
-    scenario_id INTEGER REFERENCES scenarios(id) ON DELETE CASCADE,
-    vehicle_info VARCHAR(100), -- Örn: "Araç 1 (500kg)"
-    path_data JSONB, -- İzlenen yolun sıralı istasyon ID'leri ve koordinatları
-    total_cost FLOAT, -- Mesafe Maliyeti + Kiralama (varsa)
-    capacity_usage FLOAT -- Doluluk oranı (%)
+    scenario_id INTEGER REFERENCES scenarios(id) ON DELETE SET NULL, -- Opsiyonel
+    optimization_date DATE, -- Hangi tarihin rotası?
+    vehicle_info VARCHAR(100),
+    path_data JSONB,
+    total_cost FLOAT,
+    capacity_usage FLOAT
 );
 
 -- BAŞLANGIÇ VERİLERİ (SEED DATA)
--- Kocaeli İlçeleri ve Koordinatları
 INSERT INTO stations (name, latitude, longitude) VALUES
 ('Başiskele', 40.7167, 29.9333),
 ('Çayırova', 40.8175, 29.3750),

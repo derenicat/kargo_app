@@ -25,6 +25,9 @@ const Layout = () => {
 
             {/* Menü */}
             <div className="flex space-x-2">
+              <Link to="/user-cargo" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/user-cargo')}`}>
+                Kargo Gönder
+              </Link>
               <Link to="/stations" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/stations')}`}>
                 İstasyon Yönetimi
               </Link>

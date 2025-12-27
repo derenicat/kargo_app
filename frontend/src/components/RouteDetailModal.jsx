@@ -89,21 +89,22 @@ const RouteDetailModal = ({ route, routeIndex, onClose }) => {
                     {/* Duraklar (Markerlar) */}
                     {route.stops.map((stop, idx) => {
                         let icon = stopIcon;
-                        let title = stop.name;
-                        if (idx === 0) { icon = startIcon; title = `Başlangıç: ${stop.name}`; }
-                        else if (idx === route.stops.length - 1) { icon = endIcon; title = `Varış: ${stop.name}`; }
+                        if (stop.isOrigin) icon = startIcon;
+                        else if (stop.isDestination) icon = endIcon;
 
                         return (
                             <Marker key={idx} position={[stop.lat, stop.lng]} icon={icon}>
                                 <Popup>
                                     <div className="text-center font-sans">
                                         <div className="font-bold text-slate-900 border-b pb-1 mb-1">{stop.name}</div>
-                                        {idx !== 0 && idx !== route.stops.length - 1 && (
+                                        {!stop.isOrigin && !stop.isDestination && (
                                             <div className="text-xs space-y-1">
                                                 <div className="text-blue-600 font-semibold">{stop.cargo_count} Paket</div>
-                                                <div className="bg-slate-100 rounded px-1">{stop.total_weight} kg</div>
+                                                <div className="bg-slate-100 rounded px-1">{stop.total_weight.toFixed(1)} kg</div>
                                             </div>
                                         )}
+                                        {stop.isOrigin && <div className="text-xs text-green-600 font-bold">BAŞLANGIÇ (DEPO)</div>}
+                                        {stop.isDestination && <div className="text-xs text-red-600 font-bold">VARIŞ (KAMPÜS)</div>}
                                     </div>
                                 </Popup>
                             </Marker>
@@ -127,8 +128,8 @@ const RouteDetailModal = ({ route, routeIndex, onClose }) => {
                 <div className="flex-grow overflow-y-auto p-6 custom-scrollbar">
                     <div className="relative border-l-2 border-slate-100 ml-3 space-y-8">
                         {route.stops.map((stop, idx) => {
-                            const isStart = idx === 0;
-                            const isEnd = idx === route.stops.length - 1;
+                            const isStart = stop.isOrigin;
+                            const isEnd = stop.isDestination;
                             
                             return (
                                 <div key={idx} className="relative pl-8">
@@ -140,11 +141,6 @@ const RouteDetailModal = ({ route, routeIndex, onClose }) => {
                                             <div className={`font-bold text-sm ${isStart ? 'text-green-800' : isEnd ? 'text-red-900' : 'text-slate-800'}`}>
                                                 {stop.name}
                                             </div>
-                                            {!isStart && !isEnd && (
-                                                <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase tracking-tighter">
-                                                    Durak {idx}
-                                                </span>
-                                            )}
                                         </div>
                                         
                                         {!isStart && !isEnd ? (
@@ -155,12 +151,12 @@ const RouteDetailModal = ({ route, routeIndex, onClose }) => {
                                                 </div>
                                                 <div className="flex items-center text-slate-600 font-medium">
                                                     <svg className="w-3 h-3 mr-1 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" strokeWidth="2"/></svg>
-                                                    {stop.total_weight} kg
+                                                    {stop.total_weight.toFixed(1)} kg
                                                 </div>
                                             </div>
                                         ) : (
                                             <div className="text-[11px] text-slate-500 italic">
-                                                {isStart ? 'Araç depodan çıkış yaptı.' : 'Teslimat tamamlandı.'}
+                                                {isStart ? 'Araç merkezden yola çıktı.' : 'Tüm teslimatlar tamamlandı.'}
                                             </div>
                                         )}
                                     </div>

@@ -16,10 +16,12 @@ app.use(express.json());
 const stationRoutes = require('./src/routes/stationRoutes');
 const scenarioRoutes = require('./src/routes/scenarioRoutes');
 const optimizeRoutes = require('./src/routes/optimizeRoutes');
+const cargoRoutes = require('./src/routes/cargoRoutes');
 
 app.use('/api/stations', stationRoutes);
 app.use('/api/scenarios', scenarioRoutes);
 app.use('/api/optimize', optimizeRoutes);
+app.use('/api/cargo', cargoRoutes);
 
 // Test Route
 app.get('/', (req, res) => {

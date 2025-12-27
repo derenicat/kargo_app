@@ -5,6 +5,7 @@ import StationsPage from './pages/StationsPage';
 import ScenariosPage from './pages/ScenariosPage';
 import OptimizePage from './pages/OptimizePage';
 import AdminLoginPage from './pages/AdminLoginPage';
+import UserCargoPage from './pages/UserCargoPage';
 
 // Korumalı Rota Bileşeni
 const ProtectedRoute = ({ children }) => {
@@ -23,6 +24,7 @@ function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<div className="text-center py-20"><h1 className="text-4xl font-bold text-gray-800">Hoş Geldiniz</h1><p className="mt-4 text-gray-600 text-lg">Kargo rotalama ve istasyon yönetim sistemini kullanmaya başlamak için menüyü kullanın.</p></div>} />
             <Route path="admin-login" element={<AdminLoginPage />} />
+            <Route path="user-cargo" element={<UserCargoPage />} />
             
             {/* Korumalı Rota */}
             <Route path="stations" element={
