@@ -1,11 +1,11 @@
 import axios from 'axios';
 
 export const vehicleColors = [
-  'oklch(0.6 0.2 20)',   // Kırmızımsı
-  'oklch(0.6 0.2 260)',  // Mavimsi
-  'oklch(0.6 0.2 140)',  // Yeşilimsi
-  'oklch(0.7 0.18 60)',  // Turuncumsu
-  'oklch(0.5 0.2 300)'   // Morumsu
+  'oklch(0.6 0.2 20)', // Kırmızımsı
+  'oklch(0.6 0.2 260)', // Mavimsi
+  'oklch(0.6 0.2 140)', // Yeşilimsi
+  'oklch(0.7 0.18 60)', // Turuncumsu
+  'oklch(0.5 0.2 300)', // Morumsu
 ];
 
 /**
@@ -59,20 +59,18 @@ export const decodePolyline = (str, precision) => {
  * OSRM API kullanarak iki nokta veya bir rota dizisi için gerçek yol geometrisini çeker.
  */
 export const fetchRealRoute = async (waypoints) => {
-  // Waypoints: [[lat, lng], [lat, lng], ...]
-  // OSRM formatı: lon,lat;lon,lat
   if (!waypoints || waypoints.length === 0) return [];
 
   const coordinates = waypoints.map((pt) => `${pt[1]},${pt[0]}`).join(';');
   const url = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=polyline`;
 
   try {
-    const response = await axios.get(url);
+    const response = await axios.get(url, { timeout: 10000 }); // 10 saniye timeout
     if (response.data.routes && response.data.routes.length > 0) {
       return decodePolyline(response.data.routes[0].geometry);
     }
   } catch (error) {
-    console.warn('OSRM Rota alınamadı, düz çizgi kullanılacak.', error);
+    console.error('OSRM API Hatası (Kuş uçuşuna dönülüyor):', error.message);
   }
-  return waypoints; // Hata olursa veya sonuç dönmezse düz çizgi (kuş uçuşu) dön
+  return waypoints; // Hata veya gecikme durumunda düz çizgi (kuş uçuşu) dön
 };

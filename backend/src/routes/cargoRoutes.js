@@ -4,6 +4,7 @@ const cargoController = require('../controllers/cargoController');
 
 router.post('/', cargoController.addCargo);
 router.get('/', cargoController.getCargoByDate);
+router.get('/track/:id', cargoController.trackCargo);
 router.post('/load-template', cargoController.loadScenarioTemplate);
 router.post('/seed-random', cargoController.seedRandomCargo);
 

@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const optimizeController = require('../controllers/optimizeController');
 
-router.post('/', optimizeController.runOptimization);
+router.post('/simulate', optimizeController.runOptimization);
+router.post('/save', optimizeController.saveScenario);
+router.get('/saved', optimizeController.getSavedScenario); // YENİ
+router.get('/summary', optimizeController.getOptimizationSummary);
+router.delete('/:id', optimizeController.deleteScenario); // YENİ
 
 module.exports = router;

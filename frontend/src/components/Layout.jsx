@@ -28,8 +28,17 @@ const Layout = () => {
               <Link to="/user-cargo" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/user-cargo')}`}>
                 Kargo Gönder
               </Link>
+              <Link to="/track" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/track')}`}>
+                Kargo Takip
+              </Link>
               <Link to="/stations" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/stations')}`}>
                 İstasyon Yönetimi
+              </Link>
+              <Link to="/dashboard" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/dashboard')}`}>
+                Dashboard
+              </Link>
+              <Link to="/vehicles" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/vehicles')}`}>
+                Araç Yönetimi
               </Link>
               <Link to="/scenarios" className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive('/scenarios')}`}>
                 Talep & Senaryolar

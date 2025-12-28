@@ -81,7 +81,6 @@ exports.seedRandomCargo = async (req, res) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
-        // Sorguyu tam isme göre güncelledim
         const stationsRes = await client.query("SELECT id FROM stations WHERE name != 'Kocaeli Üniversitesi Umuttepe Kampüsü'");
         const stations = stationsRes.rows;
         const count = Math.floor(Math.random() * 15) + 5;
@@ -93,4 +92,37 @@ exports.seedRandomCargo = async (req, res) => {
         await client.query('COMMIT');
         res.json({ message: `${count} adet sentetik kargo oluşturuldu.` });
     } catch (err) { await client.query('ROLLBACK'); res.status(500).json({ error: err.message }); } finally { client.release(); }
+};
+
+// Kargo Takip (Public) - GELİŞTİRİLMİŞ
+exports.trackCargo = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const cargoRes = await db.query(
+            `SELECT c.*, s.name as station_name 
+             FROM cargo_requests c 
+             JOIN stations s ON c.station_id = s.id 
+             WHERE c.id = $1`, [id]
+        );
+        
+        if (cargoRes.rows.length === 0) return res.status(404).json({ error: 'Kargo bulunamadı.' });
+        const cargo = cargoRes.rows[0];
+
+        if (!cargo.scenario_id) {
+            return res.json({ cargo, message: 'Kargonuz henüz bir plana dahil edilmedi veya plan taslak aşamasında.' });
+        }
+
+        // Doğrudan kargonun bağlı olduğu senaryoya ait rotaları çek
+        const routesRes = await db.query('SELECT * FROM routes WHERE scenario_id = $1', [cargo.scenario_id]);
+        
+        const myRoute = routesRes.rows.find(r => {
+            const data = r.path_data;
+            return data.stops.some(stop => stop.items && stop.items.some(item => item.id == id));
+        });
+
+        if (!myRoute) return res.status(404).json({ error: 'Bu kargo için onaylanmış rota bilgisi bulunamadı.' });
+
+        res.json({ cargo, route: myRoute.path_data });
+
+    } catch (err) { console.error(err); res.status(500).json({ error: 'Takip hatası.' }); }
 };
