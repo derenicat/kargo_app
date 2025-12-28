@@ -1,7 +1,7 @@
 const db = require('../../config/db');
 const GeneticAlgorithmService = require('../services/geneticAlgorithmService');
+const { calculateDistance } = require('../utils/haversine');
 
-// 1. Simülasyon
 exports.runOptimization = async (req, res) => {
     const { date, optimizationMode } = req.body;
     if (!date) return res.status(400).json({ error: 'Tarih gereklidir.' });
@@ -16,7 +16,7 @@ exports.runOptimization = async (req, res) => {
         if (cargoItems.length === 0) return res.status(404).json({ error: 'Talep bulunamadı.' });
 
         const stationsRes = await db.query('SELECT * FROM stations');
-        const vehiclesRes = await db.query('SELECT * FROM vehicles WHERE is_active = TRUE AND is_rental = FALSE');
+        const vehiclesRes = await db.query('SELECT * FROM vehicles WHERE is_active = TRUE');
         
         const ga = new GeneticAlgorithmService(stationsRes.rows, cargoItems, vehiclesRes.rows, {
             mode: optimizationMode || 'unlimited'
@@ -29,7 +29,8 @@ exports.runOptimization = async (req, res) => {
             mode: optimizationMode || 'unlimited',
             total_cost: solution.fitness,
             routes: solution.routes,
-            rejectedItems: solution.rejectedItems
+            rejectedItems: solution.rejectedItems,
+            logs: solution.logs // YENİ: Logları ekrana dön
         });
 
     } catch (err) {
@@ -38,9 +39,8 @@ exports.runOptimization = async (req, res) => {
     }
 };
 
-// 2. Senaryo Kaydet
 exports.saveScenario = async (req, res) => {
-    const { date, mode, total_cost, routes } = req.body;
+    const { date, mode, total_cost, routes, logs } = req.body; // logs eklendi
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
@@ -48,8 +48,8 @@ exports.saveScenario = async (req, res) => {
         await client.query('UPDATE cargo_requests SET status = \'PENDING\', scenario_id = NULL WHERE request_date = $1', [date]);
 
         const scenarioRes = await client.query(
-            'INSERT INTO scenarios (optimization_date, optimization_mode, total_cost) VALUES ($1, $2, $3) RETURNING id',
-            [date, mode, total_cost]
+            'INSERT INTO scenarios (optimization_date, optimization_mode, total_cost, optimization_logs) VALUES ($1, $2, $3, $4) RETURNING id',
+            [date, mode, total_cost, JSON.stringify(logs)] // Loglar kaydediliyor
         );
         const scenarioId = scenarioRes.rows[0].id;
 
@@ -61,12 +61,11 @@ exports.saveScenario = async (req, res) => {
                     scenarioId,
                     route.vehicle.id,
                     JSON.stringify(route),
-                    route.individual_cost,
-                    (route.load / route.vehicle.capacity) * 100
+                    route.individual_cost || 0,
+                    route.capacity_usage || 0
                 ]
             );
 
-            // Kargoları güncelle
             for (const stop of route.stops) {
                 if (stop.items && stop.items.length > 0) {
                     for (const item of stop.items) {
@@ -97,29 +96,24 @@ exports.getSavedScenario = async (req, res) => {
              WHERE r.scenario_id = $1`, [scenario.id]
         );
         const routes = routesRes.rows.map(r => ({ ...r.path_data }));
-        res.json({ ...scenario, mode: scenario.optimization_mode, routes });
+        res.json({
+            ...scenario, 
+            mode: scenario.optimization_mode, 
+            routes, 
+            logs: scenario.optimization_logs // YENİ: Kayıtlı logları dön
+        });
     } catch (err) { res.status(500).json({ error: 'Veri çekilemedi.' }); }
 };
 
 exports.getOptimizationSummary = async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT 
-                s.id, 
-                s.optimization_date as date, 
-                s.optimization_mode as mode, 
-                s.total_cost, 
-                s.created_at,
-                (SELECT COUNT(*) FROM routes WHERE scenario_id = s.id) as vehicle_count,
-                (SELECT AVG(capacity_usage) FROM routes WHERE scenario_id = s.id) as avg_capacity
-             FROM scenarios s 
-             ORDER BY s.optimization_date ASC`
+            `SELECT s.id, s.optimization_date as date, s.optimization_mode as mode, s.total_cost, s.created_at,
+             (SELECT COUNT(*) FROM routes WHERE scenario_id = s.id) as vehicle_count 
+             FROM scenarios s ORDER BY s.optimization_date DESC`
         );
         res.json(result.rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Özet veriler alınamadı.' });
-    }
+    } catch (err) { res.status(500).json({ error: 'Hata.' }); }
 };
 
 exports.deleteScenario = async (req, res) => {
@@ -130,22 +124,21 @@ exports.deleteScenario = async (req, res) => {
     } catch (err) { res.status(500).json({ error: 'Hata.' }); }
 };
 
-// Tüm Operasyonel Verileri Sıfırla
+// Tüm Operasyonel Verileri Sıfırla (TAM TEMİZLİK)
 exports.resetAllData = async (req, res) => {
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
-        // Sırasıyla tüm ilişkili tabloları temizle
         await client.query('DELETE FROM routes');
-        await client.query('DELETE FROM cargo_requests');
+        await client.query('DELETE FROM cargo_requests'); // ARTIK TAMAMEN SİLİYOR
         await client.query('DELETE FROM scenarios');
         await client.query('COMMIT');
         res.json({ message: 'Tüm operasyonel veriler sıfırlandı.' });
     } catch (err) {
         await client.query('ROLLBACK');
+        console.error(err);
         res.status(500).json({ error: 'Sıfırlama hatası.' });
     } finally {
         client.release();
     }
 };
-

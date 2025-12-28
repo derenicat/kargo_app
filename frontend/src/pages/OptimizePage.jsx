@@ -4,6 +4,7 @@ import { runOptimization, getCargoByDate, loadScenarioTemplate, saveScenario, ge
 import { vehicleColors, fetchRealRoute } from '../utils/routeUtils';
 import RouteDetailModal from '../components/RouteDetailModal';
 import RejectedItemsModal from '../components/RejectedItemsModal';
+import OptimizationLogsModal from '../components/OptimizationLogsModal';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -23,10 +24,12 @@ const OptimizePage = () => {
   const [saving, setSaving] = useState(false);
   const [realRoutes, setRealRoutes] = useState([]);
   const [isSavedPlan, setIsSavedPlan] = useState(false);
+  const [optimizationLogs, setOptimizationLogs] = useState([]);
   
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [showRejectedModal, setShowRejectedModal] = useState(false);
+  const [showLogsModal, setShowLogsModal] = useState(false);
 
   useEffect(() => {
     setSearchParams({ date: selectedDate });
@@ -38,6 +41,7 @@ const OptimizePage = () => {
       setResults(null);
       setRealRoutes([]);
       setIsSavedPlan(false);
+      setOptimizationLogs([]);
       
       try {
           const saved = await getSavedScenario(selectedDate);
@@ -46,6 +50,7 @@ const OptimizePage = () => {
               setOptimizationMode(saved.data.optimization_mode);
               setIsSavedPlan(true);
               setRealRoutes(saved.data.routes);
+              setOptimizationLogs(saved.data.logs || []);
           }
           const cargo = await getCargoByDate(selectedDate);
           setCargoList(cargo.data);
@@ -56,6 +61,7 @@ const OptimizePage = () => {
     setLoading(true);
     setResults(null);
     setIsSavedPlan(false);
+    setOptimizationLogs([]);
     try {
       const response = await runOptimization({ date: selectedDate, optimizationMode });
       const solution = response.data;
@@ -69,6 +75,7 @@ const OptimizePage = () => {
 
       setRealRoutes(enhancedRoutes);
       setResults(solution);
+      setOptimizationLogs(solution.logs || []);
     } catch (error) { alert('Simülasyon hatası.'); } finally { setLoading(false); }
   };
 
@@ -80,7 +87,8 @@ const OptimizePage = () => {
               date: selectedDate,
               mode: optimizationMode,
               total_cost: results.total_cost,
-              routes: realRoutes
+              routes: realRoutes,
+              logs: optimizationLogs // Logları kaydet
           });
           alert('Plan onaylandı.');
           setIsSavedPlan(true);
@@ -93,13 +101,13 @@ const OptimizePage = () => {
       setSelectedRouteIndex(index);
   };
 
-  // Reddedilenleri bul (Kayıtlı planda PENDING olanlardır, simülasyonda ise rejectedItems dizisidir)
   const rejectedItems = results?.rejectedItems || cargoList.filter(c => c.status === 'PENDING' && isSavedPlan);
 
   return (
     <div className="space-y-6 h-full flex flex-col relative">
       {selectedRoute && <RouteDetailModal route={selectedRoute} routeIndex={selectedRouteIndex} onClose={() => setSelectedRoute(null)} />}
       {showRejectedModal && <RejectedItemsModal items={rejectedItems} onClose={() => setShowRejectedModal(false)} />}
+      {showLogsModal && <OptimizationLogsModal logs={optimizationLogs} onClose={() => setShowLogsModal(false)} />}
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
@@ -108,23 +116,35 @@ const OptimizePage = () => {
                 <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-bold outline-none" />
             </div>
 
-            <div className="md:col-span-5">
+            <div className="md:col-span-4">
                 <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Strateji</label>
                 <div className="flex bg-slate-100 p-1 rounded-lg">
                     {['unlimited', 'max_weight', 'max_count'].map(m => (
-                        <button key={m} onClick={() => setOptimizationMode(m)} className={`flex-1 py-2 px-2 rounded-md text-[11px] font-bold transition ${optimizationMode === m ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{m === 'unlimited' ? 'Sınırsız' : m === 'max_weight' ? 'Max Kg' : 'Max Adet'}</button>
+                        <button key={m} onClick={() => setOptimizationMode(m)} className={`flex-1 py-2 px-2 rounded-md text-[11px] font-bold transition ${optimizationMode === m ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{m === 'unlimited' ? 'Sınırsız' : m === 'max_weight' ? 'Max Kg' : m === 'max_count' ? 'Max Adet' : ''}</button>
                     ))}
                 </div>
             </div>
 
-            <div className="md:col-span-5 flex gap-2">
-                <button onClick={handleOptimize} disabled={loading || cargoList.length === 0} className={`flex-1 py-3 rounded-xl font-bold text-white shadow-md transition-all ${loading ? 'bg-slate-400' : 'bg-slate-900 hover:bg-slate-800'}`}>{loading ? 'Hesaplanıyor...' : 'Yeni Simülasyon'}</button>
+            <div className="md:col-span-6 flex gap-2">
+                <button onClick={handleOptimize} disabled={loading || cargoList.length === 0} className={`flex-1 py-3 rounded-xl font-bold text-white shadow-md transition-all ${loading ? 'bg-slate-400' : 'bg-slate-900 hover:bg-slate-800'}`}>{loading ? 'Hesaplanıyor...' : 'Simülasyon'}</button>
                 {results && !isSavedPlan && (
-                    <button onClick={handleSave} disabled={saving} className="flex-1 py-3 rounded-xl font-bold text-white shadow-md bg-green-600 hover:bg-green-700 transition-all transform hover:scale-105 animate-pulse">Planı Onayla</button>
+                    <button onClick={handleSave} disabled={saving} className="flex-1 py-3 rounded-xl font-bold text-white shadow-md bg-green-600 hover:bg-green-700 transition-all transform hover:scale-105">Onayla</button>
                 )}
                 {isSavedPlan && (
                     <div className="flex-1 bg-green-100 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-center font-bold text-xs flex items-center justify-center italic">✓ Onaylı Plan</div>
                 )}
+                
+                {/* Algoritma Günlüğü Butonu */}
+                <button 
+                    onClick={() => setShowLogsModal(true)}
+                    disabled={optimizationLogs.length === 0}
+                    className={`p-3 rounded-xl border-2 transition-all flex items-center justify-center ${optimizationLogs.length > 0 ? 'border-slate-200 text-slate-600 hover:bg-slate-50' : 'border-slate-100 text-slate-200 cursor-not-allowed'}`}
+                    title="Algoritma Günlüğü"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </button>
             </div>
         </div>
       </div>
@@ -132,17 +152,17 @@ const OptimizePage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-grow min-h-[600px]">
         <div className="lg:col-span-1 space-y-6 flex flex-col">
           <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 max-h-[300px] flex flex-col overflow-hidden">
-            <h2 className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2 flex justify-between items-center text-sm"><span>Kargo Listesi</span> <span className="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-blue-600">{cargoList.reduce((s,i)=>s+i.weight,0).toFixed(1)} kg</span></h2>
+            <h2 className="font-bold text-slate-800 border-b border-slate-100 pb-2 mb-2 flex justify-between items-center text-sm"><span>Kargo Listesi</span> <span className="text-[10px] font-bold bg-slate-100 px-2 py-1 rounded text-blue-600">{cargoList.reduce((s,i)=>s+parseFloat(i.weight||0),0).toFixed(1)} kg</span></h2>
             <div className="space-y-1 overflow-y-auto pr-2 custom-scrollbar flex-grow">
               {cargoList.map((item) => (
-                <div key={item.id} className={`flex justify-between items-center text-[10px] p-2 rounded border transition ${item.status === 'PLANNED' ? 'bg-green-50 border-green-100' : 'hover:bg-slate-50 border-transparent hover:border-slate-100'}`}><span className="text-slate-600 font-medium truncate pr-2">{item.station_name}</span><span className="font-bold text-slate-800">{item.weight.toFixed(1)} kg</span></div>
+                <div key={item.id} className={`flex justify-between items-center text-[10px] p-2 rounded border transition ${item.status === 'PLANNED' ? 'bg-green-50 border-green-100' : 'hover:bg-slate-50 border-transparent hover:border-slate-100'}`}><span className="text-slate-600 font-medium truncate pr-2">{item.station_name}</span><span className="font-bold text-slate-800">{parseFloat(item.weight||0).toFixed(1)} kg</span></div>
               ))}
             </div>
           </div>
 
           {results && (
             <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex-grow flex flex-col">
-              <h2 className="font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2 flex items-center text-xs">Planlanan Rotalar</h2>
+              <h2 className="font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2 flex items-center text-xs">Rota Sonuçları</h2>
               <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-grow max-h-[250px]">
                 {realRoutes.map((route, idx) => (
                   <div key={idx} onClick={() => openRouteDetail(route, idx)} className="p-3 rounded-lg border-l-4 shadow-sm bg-slate-50 cursor-pointer hover:bg-blue-50 transition transform hover:scale-[1.02]" style={{ borderColor: vehicleColors[idx % vehicleColors.length] }}>
@@ -151,25 +171,11 @@ const OptimizePage = () => {
                   </div>
                 ))}
               </div>
-
-              {/* Reddedilen Paket Göstergesi */}
               {rejectedItems.length > 0 && (
-                  <div 
-                    onClick={() => setShowRejectedModal(true)}
-                    className="mt-4 p-3 bg-red-50 rounded-xl border border-red-100 cursor-pointer hover:bg-red-100 transition shadow-sm group"
-                  >
-                      <div className="flex items-center justify-between">
-                          <div className="flex items-center text-red-700 font-bold text-[11px]">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 animate-pulse" viewBox="0 0 20 20" fill="currentColor">
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                              </svg>
-                              Taşınamayan: {rejectedItems.length} Paket
-                          </div>
-                          <span className="text-[9px] text-red-500 font-bold group-hover:underline">Detay Gör →</span>
-                      </div>
+                  <div onClick={() => setShowRejectedModal(true)} className="mt-4 p-3 bg-red-50 rounded-xl border border-red-100 cursor-pointer hover:bg-red-100 transition shadow-sm group">
+                      <div className="flex items-center justify-between"><div className="flex items-center text-red-700 font-bold text-[11px]"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 animate-pulse" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>Taşınamayan: {rejectedItems.length} Paket</div><span className="text-[9px] text-red-500 font-bold group-hover:underline">Detay Gör →</span></div>
                   </div>
               )}
-
               <div className="pt-4 border-t border-slate-100 mt-auto"><div className="flex justify-between items-center bg-slate-100 p-3 rounded-lg"><span className="text-xs font-semibold text-slate-600">Plan Maliyeti</span><span className="text-base font-bold text-slate-900">{parseFloat(results.total_cost || 0).toFixed(1)}</span></div></div>
             </div>
           )}

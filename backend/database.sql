@@ -19,9 +19,10 @@ CREATE TABLE IF NOT EXISTS vehicles (
 -- 3. Senaryolar (Günlük Onaylanmış Planlar)
 CREATE TABLE IF NOT EXISTS scenarios (
     id SERIAL PRIMARY KEY,
-    optimization_date DATE NOT NULL UNIQUE, -- Günde sadece BİR aktif senaryo kuralı
+    optimization_date DATE NOT NULL UNIQUE,
     optimization_mode VARCHAR(20) NOT NULL,
     total_cost FLOAT NOT NULL,
+    optimization_logs JSONB, -- YENİ: Algoritma adımlarını tutar
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

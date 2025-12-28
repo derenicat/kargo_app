@@ -187,7 +187,7 @@ const UserCargoPage = () => {
                   <div key={cargo.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center group hover:bg-white hover:shadow-md transition">
                     <div>
                       <div className="font-bold text-slate-900">{cargo.station_name}</div>
-                      <div className="text-xs text-slate-500 font-medium mt-0.5">{cargo.weight} kg • Paket #{cargo.id}</div>
+                      <div className="text-xs text-slate-500 font-medium mt-0.5">{parseFloat(cargo.weight).toFixed(1)} kg • Paket #{cargo.id}</div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       {getStatusBadge(cargo.status)}
@@ -205,7 +205,7 @@ const UserCargoPage = () => {
             </div>
             <div className="flex justify-between text-sm mt-1">
                 <span className="text-slate-500 font-medium">Toplam Ağırlık:</span>
-                <span className="font-bold text-blue-600">{existingCargo.reduce((sum, c) => sum + c.weight, 0).toFixed(1)} kg</span>
+                <span className="font-bold text-blue-600">{existingCargo.reduce((sum, c) => sum + parseFloat(c.weight), 0).toFixed(1)} kg</span>
             </div>
           </div>
         </div>
