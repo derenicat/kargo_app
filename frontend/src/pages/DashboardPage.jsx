@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import api from '../services/api'; 
+import api, { resetAllData } from '../services/api'; 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 const DashboardPage = () => {
@@ -11,38 +11,53 @@ const DashboardPage = () => {
   }, []);
 
   const fetchSummary = async () => {
+    setLoading(true);
     try {
       const response = await api.get('/optimize/summary');
       
-      // VERİ DÖNÜŞTÜRME (PIVOT)
-      // Backend'den gelen: [{date, mode, total_cost}, ...]
-      // Recharts'ın beklediği: [{date, unlimited: 100, max_weight: 80, ...}, ...]
-      
       const pivotMap = {};
-      response.data.forEach(item => {
-          const dateStr = new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
-          if (!pivotMap[dateStr]) {
-              pivotMap[dateStr] = { date: dateStr };
-          }
-          pivotMap[dateStr][item.mode] = parseFloat(item.total_cost).toFixed(1);
-          pivotMap[dateStr][`${item.mode}_cap`] = parseFloat(item.avg_capacity).toFixed(1);
-      });
+      if (response.data && Array.isArray(response.data)) {
+          response.data.forEach(item => {
+              const dateStr = new Date(item.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+              if (!pivotMap[dateStr]) {
+                  pivotMap[dateStr] = { date: dateStr };
+              }
+              pivotMap[dateStr][item.mode] = parseFloat(item.total_cost || 0).toFixed(1);
+              const capacity = item.avg_capacity ? parseFloat(item.avg_capacity) : 0;
+              pivotMap[dateStr][`${item.mode}_cap`] = capacity.toFixed(1);
+          });
+      }
 
       setSummaryData(Object.values(pivotMap));
     } catch (error) {
       console.error('Dashboard verisi yüklenemedi:', error);
+      // Hata durumunda boş veri seti göster ki sayfa takılı kalmasın
+      setSummaryData([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleResetAll = async () => {
+      if(window.confirm("DİKKAT: Tüm kargo, senaryo ve rota verileri kalıcı olarak silinecek. İstasyon ve Araç tanımları korunacak. Onaylıyor musunuz?")) {
+          try {
+              await resetAllData();
+              setSummaryData([]);
+              alert("Sistem sıfırlandı.");
+          } catch(err) {
+              alert("Sıfırlama hatası.");
+          }
+      }
+  };
   if (loading) return <div className="p-10 text-center font-bold">Veriler Analiz Ediliyor...</div>;
 
   return (
     <div className="space-y-8">
-      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-        <h1 className="text-3xl font-black text-slate-900 mb-2">Karar Destek Sistemi</h1>
-        <p className="text-slate-500 text-lg">Farklı optimizasyon stratejilerinin maliyet ve verimlilik karşılaştırması.</p>
+      
+      <div className="flex justify-end">
+          <button onClick={handleResetAll} className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg font-bold text-xs hover:bg-red-600 hover:text-white transition">
+              Tüm Kargo Verilerini Sıfırla
+          </button>
       </div>
 
       <div className="grid grid-cols-1 gap-8">
@@ -90,31 +105,14 @@ const DashboardPage = () => {
                 <YAxis domain={[0, 100]} />
                 <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} />
                 <Legend />
-                <Line type="monotone" dataKey="unlimited_cap" name="Sınırsız Verim" stroke="#2563eb" strokeWidth={3} dot={{r: 6}} activeDot={{r: 8}} />
-                <Line type="monotone" dataKey="max_weight_cap" name="Max Ağırlık Verim" stroke="#10b981" strokeWidth={3} dot={{r: 6}} />
-                <Line type="monotone" dataKey="max_count_cap" name="Max Adet Verim" stroke="#f59e0b" strokeWidth={3} dot={{r: 6}} />
+                <Line type="monotone" dataKey="unlimited_cap" name="Sınırsız Verim" stroke="#2563eb" strokeWidth={3} dot={{r: 6}} activeDot={{r: 8}} connectNulls />
+                <Line type="monotone" dataKey="max_weight_cap" name="Max Ağırlık Verim" stroke="#10b981" strokeWidth={3} dot={{r: 6}} connectNulls />
+                <Line type="monotone" dataKey="max_count_cap" name="Max Adet Verim" stroke="#f59e0b" strokeWidth={3} dot={{r: 6}} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-      </div>
-
-      {/* Bilgi Kutusu */}
-      <div className="bg-blue-900 text-white p-8 rounded-3xl shadow-xl flex items-center justify-between overflow-hidden relative">
-          <div className="relative z-10">
-              <h3 className="text-xl font-bold mb-2">Nasıl Yorumlanmalı?</h3>
-              <p className="text-blue-100 max-w-2xl text-sm leading-relaxed">
-                  Grafikler, seçilen tarihte her üç algoritmanın da çalıştırılması durumunda ortaya çıkan maliyet farklarını gösterir. 
-                  Genellikle <strong>Sınırsız</strong> mod tüm kargoları taşıdığı için daha yüksek maliyetli, 
-                  <strong>Sabit</strong> modlar ise kapasite kısıtı nedeniyle daha düşük maliyetli ancak eksik kargolu sonuçlar üretir.
-              </p>
-          </div>
-          <div className="absolute right-0 bottom-0 opacity-10 -mr-10 -mb-10">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-64 w-64" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 2v-6m0 10v4a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5z" />
-              </svg>
-          </div>
       </div>
     </div>
   );

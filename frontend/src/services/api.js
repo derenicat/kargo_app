@@ -24,6 +24,7 @@ export const seedRandomCargo = (date) => api.post('/cargo/seed-random', { date }
 export const runOptimization = (data) => api.post('/optimize/simulate', data);
 export const saveScenario = (data) => api.post('/optimize/save', data);
 export const getSavedScenario = (date) => api.get(`/optimize/saved?date=${date}`);
+export const resetAllData = () => api.delete('/optimize/reset-all');
 
 // Araç Yönetimi
 export const getVehicles = () => api.get('/vehicles');

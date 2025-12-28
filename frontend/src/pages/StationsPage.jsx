@@ -133,11 +133,6 @@ const StationsPage = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full relative">
-      {/* Çıkış Butonu (Sağ Üst) */}
-      <button onClick={logout} className="absolute top-0 right-0 m-4 bg-red-100 text-red-600 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 z-50">
-          Yönetici Çıkış
-      </button>
-
       {/* Sol Panel: Liste ve Form (4 Sütun) */}
       <div className="lg:col-span-4 space-y-6 flex flex-col h-full">
         

@@ -104,12 +104,22 @@ exports.getSavedScenario = async (req, res) => {
 exports.getOptimizationSummary = async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT s.id, s.optimization_date as date, s.optimization_mode as mode, s.total_cost, s.created_at,
-             (SELECT COUNT(*) FROM routes WHERE scenario_id = s.id) as vehicle_count 
-             FROM scenarios s ORDER BY s.optimization_date DESC`
+            `SELECT 
+                s.id, 
+                s.optimization_date as date, 
+                s.optimization_mode as mode, 
+                s.total_cost, 
+                s.created_at,
+                (SELECT COUNT(*) FROM routes WHERE scenario_id = s.id) as vehicle_count,
+                (SELECT AVG(capacity_usage) FROM routes WHERE scenario_id = s.id) as avg_capacity
+             FROM scenarios s 
+             ORDER BY s.optimization_date ASC`
         );
         res.json(result.rows);
-    } catch (err) { res.status(500).json({ error: 'Hata.' }); }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Özet veriler alınamadı.' });
+    }
 };
 
 exports.deleteScenario = async (req, res) => {
@@ -119,3 +129,23 @@ exports.deleteScenario = async (req, res) => {
         res.json({ message: 'Silindi.' });
     } catch (err) { res.status(500).json({ error: 'Hata.' }); }
 };
+
+// Tüm Operasyonel Verileri Sıfırla
+exports.resetAllData = async (req, res) => {
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
+        // Sırasıyla tüm ilişkili tabloları temizle
+        await client.query('DELETE FROM routes');
+        await client.query('DELETE FROM cargo_requests');
+        await client.query('DELETE FROM scenarios');
+        await client.query('COMMIT');
+        res.json({ message: 'Tüm operasyonel veriler sıfırlandı.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ error: 'Sıfırlama hatası.' });
+    } finally {
+        client.release();
+    }
+};
+

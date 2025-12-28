@@ -1,20 +1,15 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    // Sayfa yenilendiğinde oturumu koru
-    const storedAuth = localStorage.getItem('isAdmin');
-    if (storedAuth === 'true') {
-      setIsAdmin(true);
-    }
-  }, []);
+  // Senkron ilklendirme: State başladığı anda localStorage'a bakar
+  // Böylece useEffect beklenmeden ilk render'da isAdmin doğru değerini alır.
+  const [isAdmin, setIsAdmin] = useState(() => {
+    return localStorage.getItem('isAdmin') === 'true';
+  });
 
   const login = (password) => {
-    // Basit şifre kontrolü
     if (password === 'admin123') {
       setIsAdmin(true);
       localStorage.setItem('isAdmin', 'true');

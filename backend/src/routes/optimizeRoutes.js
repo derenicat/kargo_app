@@ -6,6 +6,7 @@ router.post('/simulate', optimizeController.runOptimization);
 router.post('/save', optimizeController.saveScenario);
 router.get('/saved', optimizeController.getSavedScenario); // YENİ
 router.get('/summary', optimizeController.getOptimizationSummary);
-router.delete('/:id', optimizeController.deleteScenario); // YENİ
+router.delete('/reset-all', optimizeController.resetAllData); // YENİ
+router.delete('/:id', optimizeController.deleteScenario);
 
 module.exports = router;
