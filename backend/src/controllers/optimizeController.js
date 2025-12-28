@@ -40,7 +40,14 @@ exports.runOptimization = async (req, res) => {
 };
 
 exports.saveScenario = async (req, res) => {
-    const { date, mode, total_cost, routes, logs } = req.body; // logs eklendi
+    const { date, mode, total_cost, routes, logs } = req.body;
+    
+    // DEBUG: Gelen veriyi kontrol et
+    console.log(`[SAVE] Date: ${date}, Mode: ${mode}, Routes Count: ${routes?.length}`);
+    if (routes && routes.length > 0) {
+        console.log('[SAVE] Sample Route Data:', JSON.stringify(routes[0], null, 2));
+    }
+
     const client = await db.pool.connect();
     try {
         await client.query('BEGIN');
@@ -49,11 +56,22 @@ exports.saveScenario = async (req, res) => {
 
         const scenarioRes = await client.query(
             'INSERT INTO scenarios (optimization_date, optimization_mode, total_cost, optimization_logs) VALUES ($1, $2, $3, $4) RETURNING id',
-            [date, mode, total_cost, JSON.stringify(logs)] // Loglar kaydediliyor
+            [date, mode, total_cost, JSON.stringify(logs)] 
         );
         const scenarioId = scenarioRes.rows[0].id;
 
         for (const route of routes) {
+            // DEBUG: Kapasite değerlerini kontrol et
+            console.log(`[SAVE] Vehicle: ${route.vehicle.name}, Load: ${route.load}, Capacity: ${route.vehicle.capacity}`);
+            
+            let capUsage = parseFloat(route.capacity_usage);
+            if (isNaN(capUsage) || capUsage === 0) {
+                const load = parseFloat(route.load) || 0;
+                const capacity = parseFloat(route.vehicle.capacity) || 500;
+                capUsage = (load / capacity) * 100;
+                console.log(`[SAVE] Recalculated Usage: ${capUsage.toFixed(2)}%`);
+            }
+
             await client.query(
                 `INSERT INTO routes (scenario_id, vehicle_id, path_data, individual_cost, capacity_usage) 
                  VALUES ($1, $2, $3, $4, $5)`,
@@ -62,9 +80,11 @@ exports.saveScenario = async (req, res) => {
                     route.vehicle.id,
                     JSON.stringify(route),
                     route.individual_cost || 0,
-                    route.capacity_usage || 0
+                    capUsage
                 ]
             );
+
+            // ... (Kargo güncelleme döngüsü aynı kalacak)
 
             for (const stop of route.stops) {
                 if (stop.items && stop.items.length > 0) {
@@ -108,12 +128,31 @@ exports.getSavedScenario = async (req, res) => {
 exports.getOptimizationSummary = async (req, res) => {
     try {
         const result = await db.query(
-            `SELECT s.id, s.optimization_date as date, s.optimization_mode as mode, s.total_cost, s.created_at,
-             (SELECT COUNT(*) FROM routes WHERE scenario_id = s.id) as vehicle_count 
-             FROM scenarios s ORDER BY s.optimization_date DESC`
+            `SELECT 
+                s.id, 
+                s.optimization_date as date, 
+                s.optimization_mode as mode, 
+                s.total_cost, 
+                s.created_at,
+                (SELECT COUNT(*) FROM routes WHERE scenario_id = s.id) as vehicle_count,
+                COALESCE(
+                    (SELECT AVG(capacity_usage) FROM routes WHERE scenario_id = s.id), 
+                    0
+                ) as avg_capacity
+             FROM scenarios s 
+             ORDER BY s.optimization_date ASC`
         );
-        res.json(result.rows);
-    } catch (err) { res.status(500).json({ error: 'Hata.' }); }
+        // Sayısal değerleri garantiye al
+        const formattedRows = result.rows.map(row => ({
+            ...row,
+            avg_capacity: parseFloat(row.avg_capacity),
+            total_cost: parseFloat(row.total_cost)
+        }));
+        res.json(formattedRows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Özet veriler alınamadı.' });
+    }
 };
 
 exports.deleteScenario = async (req, res) => {

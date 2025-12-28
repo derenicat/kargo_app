@@ -14,7 +14,8 @@ const DashboardPage = () => {
     setLoading(true);
     try {
       const response = await api.get('/optimize/summary');
-      
+      console.log('Dashboard API Response:', response.data); // DEBUG
+
       const pivotMap = {};
       if (response.data && Array.isArray(response.data)) {
           response.data.forEach(item => {
@@ -22,16 +23,20 @@ const DashboardPage = () => {
               if (!pivotMap[dateStr]) {
                   pivotMap[dateStr] = { date: dateStr };
               }
+              
+              // Maliyet
               pivotMap[dateStr][item.mode] = parseFloat(item.total_cost || 0).toFixed(1);
-              const capacity = item.avg_capacity ? parseFloat(item.avg_capacity) : 0;
+              
+              // Verimlilik (Anahtar ismine dikkat: unlimited_cap, max_weight_cap...)
+              const capacity = parseFloat(item.avg_capacity || 0);
               pivotMap[dateStr][`${item.mode}_cap`] = capacity.toFixed(1);
           });
       }
-
+      
+      console.log('Processed Chart Data:', Object.values(pivotMap)); // DEBUG
       setSummaryData(Object.values(pivotMap));
     } catch (error) {
       console.error('Dashboard verisi yüklenemedi:', error);
-      // Hata durumunda boş veri seti göster ki sayfa takılı kalmasın
       setSummaryData([]);
     } finally {
       setLoading(false);
